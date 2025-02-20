@@ -26,6 +26,7 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 client = AsyncIOMotorClient(MONGO_URI)
 db = client["survey_db"]
 survey_collection = db["surveys"]
+survey_response_collection = db["survey_responses"]
 
 # Pydantic Models
 class CreateSurveyRequest(BaseModel):
@@ -39,6 +40,16 @@ class UpdateQuestionsRequest(BaseModel):
 
 class UpdateSurveyNameRequest(BaseModel):
     name: str
+
+class SurveyAccessRequest(BaseModel):
+    survey_number: str
+    username: str
+
+class SubmitSurveyRequest(BaseModel):
+    survey_number: str
+    username: str
+    answers: list[dict[str, str]]
+    question: list[str] 
 
 # Utility function to convert MongoDB document to JSON
 def survey_helper(survey) -> dict:
@@ -115,4 +126,35 @@ async def get_surveys():
     return [survey_helper(survey) for survey in surveys]
 
 
+# 9️⃣ Get all responses for a specific survey
+@app.get("/surveys/{survey_id}/responses/")
+async def get_survey_responses(survey_id: str):
+    responses = await survey_response_collection.find({"survey_id": ObjectId(survey_id)}).to_list(100)
+    return responses
 
+
+
+
+@app.post("/surveys/access/")
+async def access_survey(request: SurveyAccessRequest):
+    survey = await survey_collection.find_one({"survey_number": request.survey_number})
+    
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    survey["_id"] = str(survey["_id"])
+    return survey    
+
+@app.post("/surveys/submit/")
+async def submit_survey(request: SubmitSurveyRequest): 
+    survey = await survey_collection.find_one({"_id": ObjectId(request.survey_number)})
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    
+    response_data = {
+        "survey_number": survey["survey_number"],
+        "username": request.username,
+        "answers": request.answers,
+    }
+
+    result = await survey_response_collection.insert_one(response_data)
+    return {"submission_id": str(result.inserted_id), "message": "Survey responses submitted successfully"}
