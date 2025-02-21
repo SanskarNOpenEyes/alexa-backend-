@@ -158,3 +158,29 @@ async def submit_survey(request: SubmitSurveyRequest):
 
     result = await survey_response_collection.insert_one(response_data)
     return {"submission_id": str(result.inserted_id), "message": "Survey responses submitted successfully"}
+
+class AlexaRequest(BaseModel):
+    request: dict
+
+@app.post("/alexa/survey/")
+async def alexa_survey_handler(request: AlexaRequest):
+    intent_name = request.request["intent"]["name"]
+    
+    if intent_name == "LaunchSurveyIntent":
+        response_text = "Welcome to the survey. Would you like to start?"
+    elif intent_name == "AnswerSurveyIntent":
+        answer = request.request["intent"]["slots"]["answer"]["value"]
+        response_text = f"Got it, you said {answer}. Next question?"
+    elif intent_name == "EndSurveyIntent":
+        response_text = "Thank you for completing the survey."
+    else:
+        response_text = "I didn't understand that."
+
+    return {
+        "version": "1.0",
+        "response": {
+            "outputSpeech": {"type": "PlainText", "text": response_text},
+            "shouldEndSession": intent_name == "EndSurveyIntent"
+        }
+    }
+    
