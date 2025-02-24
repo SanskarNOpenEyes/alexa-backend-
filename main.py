@@ -22,7 +22,7 @@ def read_root():
 
 
 # MongoDB Connection
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = os.getenv("MONGO_URI")
 client = AsyncIOMotorClient(MONGO_URI)
 db = client["survey_db"]
 survey_collection = db["surveys"]
@@ -137,12 +137,15 @@ async def get_survey_responses(survey_id: str):
 
 @app.post("/surveys/access/")
 async def access_survey(request: SurveyAccessRequest):
-    survey = await survey_collection.find_one({"survey_number": request.survey_number})
+    # Try to find the survey by name instead of just ID
+    survey = await survey_collection.find_one({"name": request.survey_number})
     
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
+    
     survey["_id"] = str(survey["_id"])
-    return survey    
+    return survey
+   
 
 @app.post("/surveys/submit/")
 async def submit_survey(request: SubmitSurveyRequest): 
@@ -162,25 +165,50 @@ async def submit_survey(request: SubmitSurveyRequest):
 class AlexaRequest(BaseModel):
     request: dict
 
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 @app.post("/alexa/survey/")
 async def alexa_survey_handler(request: AlexaRequest):
-    intent_name = request.request["intent"]["name"]
-    
-    if intent_name == "LaunchSurveyIntent":
-        response_text = "Welcome to the survey. Would you like to start?"
-    elif intent_name == "AnswerSurveyIntent":
-        answer = request.request["intent"]["slots"]["answer"]["value"]
-        response_text = f"Got it, you said {answer}. Next question?"
-    elif intent_name == "EndSurveyIntent":
-        response_text = "Thank you for completing the survey."
-    else:
-        response_text = "I didn't understand that."
+    logger.info(f"Received Alexa request: {request.json()}")  # Log request for debugging
 
-    return {
-        "version": "1.0",
-        "response": {
-            "outputSpeech": {"type": "PlainText", "text": response_text},
-            "shouldEndSession": intent_name == "EndSurveyIntent"
-        }
-    }
-    
+    try:
+        intent_name = request.request["intent"]["name"]
+        logger.info(f"Processing intent: {intent_name}")
+
+        if intent_name == "FetchSurveyIntent":
+            survey_name = request.request["intent"]["slots"].get("surveyName", {}).get("value", None)
+            logger.info(f"Fetching survey: {survey_name}")
+
+            if not survey_name:
+                return {"response": "Please provide a survey name."}
+            
+            survey = await survey_collection.find_one({"name": survey_name})
+            if not survey or "questions" not in survey or len(survey["questions"]) == 0:
+                return {"response": f"Sorry, the {survey_name} survey is not available."}
+
+            first_question = survey["questions"][0]
+            return {"response": f"Starting the {survey_name} survey. First question: {first_question}"}
+
+        elif intent_name == "AnswerSurveyIntent":
+            answer = request.request["intent"]["slots"].get("answer", {}).get("value", None)
+            survey_name = request.session.get("survey_name", None)
+            logger.info(f"Saving response: {answer} for survey: {survey_name}")
+
+            if not survey_name or not answer:
+                return {"response": "Please start a survey before answering."}
+
+            await survey_response_collection.insert_one({
+                "survey_name": survey_name,
+                "answer": answer,
+                "username": request.session.get("username", "Unknown")
+            })
+
+            return {"response": f"Thank you! Your answer '{answer}' has been recorded."}
+
+    except Exception as e:
+        logger.error(f"Error processing Alexa request: {str(e)}")
+        return {"response": "An error occurred. Please try again."}
+
+    return {"response": "I didn't understand that request."}
