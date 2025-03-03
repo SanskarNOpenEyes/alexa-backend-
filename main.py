@@ -22,7 +22,7 @@ def read_root():
 
 
 # MongoDB Connection
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+2.4.0")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017")
 client = AsyncIOMotorClient(MONGO_URI)
 db = client["survey_db"]
 survey_collection = db["surveys"]
