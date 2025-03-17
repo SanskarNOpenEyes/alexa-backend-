@@ -17,7 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
+@app.get("/"
 def read_root():
     return {"message": "Server is running"}
 
@@ -108,7 +108,7 @@ async def update_questions(survey_id: str, request: UpdateQuestionsRequest):
     )
 
     if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Survey not found1")
+        raise HTTPException(status_code=404, detail="Survey not found")
 
     return {"message": "Questions updated successfully1"}
 
