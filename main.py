@@ -1,3 +1,4 @@
+from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -33,7 +34,8 @@ class CreateSurveyRequest(BaseModel):
     survey_number: str
 
 class AddQuestionRequest(BaseModel):
-    question: str
+    question_text: str
+    question_type: str  # "qa", "mcq", "rating"
 
 class UpdateQuestionsRequest(BaseModel):
     questions: list[str]
@@ -70,14 +72,27 @@ async def create_survey(request: CreateSurveyRequest):
 # 2️⃣ Add a question to an existing survey
 @app.post("/surveys/{survey_id}/questions/")
 async def add_question(survey_id: str, request: AddQuestionRequest):
+    # Create question data
+    question_data = {
+        "question_text": request.question_text,
+        "question_type": request.question_type
+    }
+
+    # If MCQ, include options
+    if request.question_type == "mcq" and request.mcq_options:
+        question_data["mcq_options"] = request.mcq_options
+
+    # Update survey by adding the new question
     result = await survey_collection.update_one(
         {"_id": ObjectId(survey_id)},
-        {"$push": {"questions": request.question}}
+        {"$push": {"questions": question_data}}
     )
+
+    # Check if the survey was found and updated
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Survey not found")
-    return {"message": "Question added successfully"}
 
+    return {"message": "Question added successfully"}
 # 3️⃣ Update all questions in a survey
 @app.put("/surveys/{survey_id}/questions/")
 async def update_questions(survey_id: str, request: UpdateQuestionsRequest):
