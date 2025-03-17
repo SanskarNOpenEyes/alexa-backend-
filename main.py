@@ -80,6 +80,7 @@ async def create_survey(request: CreateSurveyRequest):
 @app.post("/surveys/{survey_id}/questions/")
 async def add_question(survey_id: str, request: AddQuestionRequest):
     question_data = {
+
         "question_text": request.question_text,
         "question_type": request.question_type
     }
@@ -96,7 +97,7 @@ async def add_question(survey_id: str, request: AddQuestionRequest):
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Survey not found")
 
-    return {"message": "Question added successfully"}
+    return {"message": "Question added successfully 1"}
 
 # 3️⃣ Update all questions in a survey (supporting question types)
 @app.put("/surveys/{survey_id}/questions/")
@@ -107,9 +108,9 @@ async def update_questions(survey_id: str, request: UpdateQuestionsRequest):
     )
 
     if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Survey not found")
+        raise HTTPException(status_code=404, detail="Survey not found1")
 
-    return {"message": "Questions updated successfully"}
+    return {"message": "Questions updated successfully1"}
 
 # 4️⃣ Update survey name
 @app.put("/surveys/{survey_id}/name/")
@@ -187,3 +188,4 @@ async def submit_survey(request: SubmitSurveyRequest):
 
     result = await survey_response_collection.insert_one(response_data)
     return {"submission_id": str(result.inserted_id), "message": "Survey responses submitted successfully"}
+
