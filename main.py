@@ -1,3 +1,4 @@
+from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -22,7 +23,7 @@ def read_root():
 
 
 # MongoDB Connection
-MONGO_URI = os.getenv("MONGO_URI")
+MONGO_URI = ("mongodb+srv://GenerateQuestions:GenerateQuestions%40123@cluster0.b3ymk.mongodb.net/test?tls=true")
 client = AsyncIOMotorClient(MONGO_URI)
 db = client["survey_db"]
 survey_collection = db["surveys"]
@@ -33,7 +34,8 @@ class CreateSurveyRequest(BaseModel):
     survey_number: str
 
 class AddQuestionRequest(BaseModel):
-    question: str
+    question_text: str
+    question_type: str  # "qa", "mcq", "rating"
 
 class UpdateQuestionsRequest(BaseModel):
     questions: list[str]
@@ -70,14 +72,27 @@ async def create_survey(request: CreateSurveyRequest):
 # 2️⃣ Add a question to an existing survey
 @app.post("/surveys/{survey_id}/questions/")
 async def add_question(survey_id: str, request: AddQuestionRequest):
+    # Create question data
+    question_data = {
+        "question_text": request.question_text,
+        "question_type": request.question_type
+    }
+
+    # If MCQ, include options
+    if request.question_type == "mcq" and request.mcq_options:
+        question_data["mcq_options"] = request.mcq_options
+
+    # Update survey by adding the new question
     result = await survey_collection.update_one(
         {"_id": ObjectId(survey_id)},
-        {"$push": {"questions": request.question}}
+        {"$push": {"questions": question_data}}
     )
+
+    # Check if the survey was found and updated
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Survey not found")
-    return {"message": "Question added successfully"}
 
+    return {"message": "Question added successfully"}
 # 3️⃣ Update all questions in a survey
 @app.put("/surveys/{survey_id}/questions/")
 async def update_questions(survey_id: str, request: UpdateQuestionsRequest):
@@ -162,53 +177,3 @@ async def submit_survey(request: SubmitSurveyRequest):
     result = await survey_response_collection.insert_one(response_data)
     return {"submission_id": str(result.inserted_id), "message": "Survey responses submitted successfully"}
 
-class AlexaRequest(BaseModel):
-    request: dict
-
-import logging
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-@app.post("/alexa/survey/")
-async def alexa_survey_handler(request: AlexaRequest):
-    logger.info(f"Received Alexa request: {request.json()}")  # Log request for debugging
-
-    try:
-        intent_name = request.request["intent"]["name"]
-        logger.info(f"Processing intent: {intent_name}")
-
-        if intent_name == "FetchSurveyIntent":
-            survey_name = request.request["intent"]["slots"].get("surveyName", {}).get("value", None)
-            logger.info(f"Fetching survey: {survey_name}")
-
-            if not survey_name:
-                return {"response": "Please provide a survey name."}
-            
-            survey = await survey_collection.find_one({"name": survey_name})
-            if not survey or "questions" not in survey or len(survey["questions"]) == 0:
-                return {"response": f"Sorry, the {survey_name} survey is not available."}
-
-            first_question = survey["questions"][0]
-            return {"response": f"Starting the {survey_name} survey. First question: {first_question}"}
-
-        elif intent_name == "AnswerSurveyIntent":
-            answer = request.request["intent"]["slots"].get("answer", {}).get("value", None)
-            survey_name = request.session.get("survey_name", None)
-            logger.info(f"Saving response: {answer} for survey: {survey_name}")
-
-            if not survey_name or not answer:
-                return {"response": "Please start a survey before answering."}
-
-            await survey_response_collection.insert_one({
-                "survey_name": survey_name,
-                "answer": answer,
-                "username": request.session.get("username", "Unknown")
-            })
-
-            return {"response": f"Thank you! Your answer '{answer}' has been recorded."}
-
-    except Exception as e:
-        logger.error(f"Error processing Alexa request: {str(e)}")
-        return {"response": "An error occurred. Please try again."}
-
-    return {"response": "I didn't understand that request."}
